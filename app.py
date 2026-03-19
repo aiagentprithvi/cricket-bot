@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, Response
 from twilio.twiml.messaging_response import MessagingResponse
 from agent import handle_message
 from reminder import start_scheduler
@@ -18,6 +18,11 @@ def whatsapp():
     except Exception as e:
         print(f"[FULL ERROR] {traceback.format_exc()}")
         reply = "⚠️ Something went wrong. Please try again."
+
+    # If reply is empty — send no message (saves Twilio count)
+    if not reply:
+        return Response("", status=204)
+
     resp = MessagingResponse()
     resp.message(reply)
     return str(resp)

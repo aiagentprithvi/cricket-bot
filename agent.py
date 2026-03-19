@@ -11,6 +11,9 @@ from sheets import (
 def fmt(items):
     return "\n".join(f"  • {i}" for i in items) if items else "  None"
 
+# Empty string = no reply sent (saves Twilio messages)
+NO_REPLY = ""
+
 HELP = """🏏 *Cricket Club Finance Bot*
 
 👤 *Players:*
@@ -36,10 +39,16 @@ HELP = """🏏 *Cricket Club Finance Bot*
   settle Karthik 15000
   reimburse Satheesh 600 Food refund
 
-📊 *Reports:*
+📊 *Reports (always reply):*
   summary
   summary March 2026
   admin summary
+  players
+  clubfee unpaid
+  match unpaid div2
+
+ℹ️ Success actions update Google Sheet silently.
+   Only errors will get a reply message.
 
 Type *help* anytime."""
 
@@ -49,21 +58,23 @@ def handle_message(msg: str, sender: str = "") -> str:
 
     try:
 
-        # ── HELP / GREETING ─────────────────────────────
+        # ── HELP / GREETING — always reply ──────────────
         if lower in ["help", "hi", "hello", "start", "menu"]:
             return HELP
 
-        # ── ADD PLAYER ──────────────────────────────────
+        # ── ADD PLAYER — only reply on error ────────────
         # add player Name Phone Role NKTeam
         m = re.match(r"add player (\S+)\s+(\S+)\s+(\S+)\s+(\S+)", msg, re.I)
         if m:
             name, phone, role, nk = m.groups()
-            no = add_player(name, phone, role, nk)
-            return (f"✅ Player *{name.title()}* added as #{no}\n"
-                    f"Phone: {phone} | Role: {role.title()} | Team: {nk.upper()}\n"
-                    f"Club fee pending — set when they pay.")
+            try:
+                add_player(name, phone, role, nk)
+                print(f"[OK] Player added: {name}")
+                return NO_REPLY  # silent success — check Google Sheet
+            except Exception as e:
+                return f"❌ Error adding player *{name}*: {str(e)}\nCheck format: `add player Name Phone Role NK1`"
 
-        # ── PLAYERS LIST ────────────────────────────────
+        # ── PLAYERS LIST — always reply (query) ─────────
         if lower == "players":
             players = get_all_players()
             if not players:
@@ -72,7 +83,7 @@ def handle_message(msg: str, sender: str = "") -> str:
                      for p in players]
             return f"👥 *Players ({len(players)}):*\n" + "\n".join(lines)
 
-        # ── MARK CLUB FEE PAID ──────────────────────────
+        # ── MARK CLUB FEE PAID — only reply on error ────
         # Prithvi paid 15000 Karthik
         m = re.match(r"(\w+)\s+paid\s+(\d+)\s*(\w*)", msg, re.I)
         if m and m.group(1).lower() not in ["match", "club", "send"]:
@@ -80,20 +91,12 @@ def handle_message(msg: str, sender: str = "") -> str:
             amount  = int(m.group(2))
             paid_to = m.group(3).strip() or "Admin"
             if mark_club_fee_paid(player, paid_to, amount):
-                from reminder import notify_admins
-                notify_admins(
-                    f"💰 *Club Fee Received!*\n"
-                    f"Player: *{player.title()}*\n"
-                    f"Amount: *₹{amount:,}*\n"
-                    f"Collected by: *{paid_to}*\n"
-                    f"Sheet updated ✅"
-                )
-                return (f"✅ Club fee *₹{amount:,}* for *{player.title()}* marked as *Paid*\n"
-                        f"Collected by: *{paid_to}* | Sheet updated 📊")
-            return (f"⚠️ *{player.title()}* not found or already paid.\n"
+                print(f"[OK] Club fee paid: {player} ₹{amount} to {paid_to}")
+                return NO_REPLY  # silent success — check Google Sheet
+            return (f"❌ *{player.title()}* not found or already paid.\n"
                     f"Check spelling or use `clubfee unpaid` to see list.")
 
-        # ── CLUB FEE UNPAID LIST ─────────────────────────
+        # ── CLUB FEE UNPAID — always reply (query) ──────
         if re.search(r"clubfee unpaid|unpaid club|club unpaid", lower):
             pending = get_pending_club_fees()
             if not pending:
@@ -102,42 +105,49 @@ def handle_message(msg: str, sender: str = "") -> str:
                      for p in pending]
             return f"❌ *Pending Club Fees ({len(pending)}):*\n" + "\n".join(lines)
 
-        # ── SEND CLUB REMINDERS ──────────────────────────
+        # ── SEND CLUB REMINDERS — only reply on error ───
         if re.search(r"send club reminder|club reminder|send reminder", lower):
-            from reminder import send_club_fee_reminders
-            send_club_fee_reminders()
-            return "📨 Reminders sent to all pending players!"
+            try:
+                from reminder import send_club_fee_reminders
+                send_club_fee_reminders()
+                print("[OK] Club reminders sent")
+                return NO_REPLY  # silent — admins see result in sheet
+            except Exception as e:
+                return f"❌ Error sending reminders: {str(e)}"
 
-        # ── SET PLAYING XI ──────────────────────────────
+        # ── SET PLAYING XI — only reply on error ────────
         # xi div2 Round1 Ravi,Kumar,Suresh
         m = re.match(r"xi\s+(\S+)\s+(\S+)\s+(.+)", msg, re.I)
         if m:
             tkey, rnd, pl_str = m.groups()
             sheet = TEAM_SHEET.get(tkey.lower())
             if not sheet:
-                return f"⚠️ Unknown team `{tkey}`. Use: div2 · div3 · nk1 · nk2 · u15"
-            players = [p.strip() for p in pl_str.replace(";",",").split(",") if p.strip()]
-            added   = set_playing_xi(sheet, rnd, players)
-            return (f"✅ *Playing XI set — {sheet} | {rnd}*\n"
-                    f"Players ({len(added)}):\n" + fmt(added) +
-                    f"\n\nAll marked *Unpaid*.\n"
-                    f"After match send:\n"
-                    f"`matchfee {tkey} {rnd} Ravi=1500,Kumar=1500 AdminName`")
+                return f"❌ Unknown team `{tkey}`. Use: div2 · div3 · nk1 · nk2 · u15"
+            try:
+                players = [p.strip() for p in pl_str.replace(";",",").split(",") if p.strip()]
+                set_playing_xi(sheet, rnd, players)
+                print(f"[OK] XI set: {sheet} {rnd} — {players}")
+                return NO_REPLY  # silent — check Google Sheet
+            except Exception as e:
+                return f"❌ Error setting XI: {str(e)}"
 
-        # ── UPDATE PLAYING XI ────────────────────────────
+        # ── UPDATE PLAYING XI — only reply on error ──────
         # update xi div2 Round1 Ravi,Kumar
         m = re.match(r"update xi\s+(\S+)\s+(\S+)\s+(.+)", msg, re.I)
         if m:
             tkey, rnd, pl_str = m.groups()
             sheet = TEAM_SHEET.get(tkey.lower())
             if not sheet:
-                return f"⚠️ Unknown team `{tkey}`. Use: div2 · div3 · nk1 · nk2 · u15"
-            players = [p.strip() for p in pl_str.replace(";",",").split(",") if p.strip()]
-            updated = update_playing_xi(sheet, rnd, players)
-            return (f"✅ *Playing XI updated — {sheet} | {rnd}*\n"
-                    f"New XI ({len(updated)}):\n" + fmt(updated))
+                return f"❌ Unknown team `{tkey}`. Use: div2 · div3 · nk1 · nk2 · u15"
+            try:
+                players = [p.strip() for p in pl_str.replace(";",",").split(",") if p.strip()]
+                update_playing_xi(sheet, rnd, players)
+                print(f"[OK] XI updated: {sheet} {rnd}")
+                return NO_REPLY  # silent — check Google Sheet
+            except Exception as e:
+                return f"❌ Error updating XI: {str(e)}"
 
-        # ── RECORD MATCH FEES ────────────────────────────
+        # ── RECORD MATCH FEES — only reply on error ──────
         # matchfee div2 Round1 Ravi=1500,Kumar=1500 Karthik
         m = re.match(r"matchfee\s+(\S+)\s+(\S+)\s+(.+?)(?:\s+([A-Za-z]\w*))?$", msg, re.I)
         if m:
@@ -145,7 +155,7 @@ def handle_message(msg: str, sender: str = "") -> str:
             paid_to = paid_to or "Admin"
             sheet   = TEAM_SHEET.get(tkey.lower())
             if not sheet:
-                return f"⚠️ Unknown team `{tkey}`. Use: div2 · div3 · nk1 · nk2 · u15"
+                return f"❌ Unknown team `{tkey}`. Use: div2 · div3 · nk1 · nk2 · u15"
             fee_dict = {}
             for part in fee_str.replace(";",",").split(","):
                 if "=" in part:
@@ -155,90 +165,91 @@ def handle_message(msg: str, sender: str = "") -> str:
                     except:
                         pass
             if not fee_dict:
-                return "⚠️ Format: `matchfee div2 Round1 Ravi=1500,Kumar=1500 AdminName`"
-            ok, fail = record_match_fees(sheet, rnd, fee_dict, paid_to)
-            reply = f"✅ *Match fees recorded — {sheet} | {rnd}*\n"
-            if ok:   reply += f"\nPaid ({len(ok)}):\n" + fmt(ok)
-            if fail: reply += f"\n\n⚠️ Not found (set XI first):\n" + fmt(fail)
-            return reply
+                return "❌ Format: `matchfee div2 Round1 Ravi=1500,Kumar=1500 AdminName`"
+            try:
+                ok, fail = record_match_fees(sheet, rnd, fee_dict, paid_to)
+                print(f"[OK] Match fees: {sheet} {rnd} — OK:{ok} Fail:{fail}")
+                if fail:
+                    # Only reply if some players were not found
+                    return (f"⚠️ Some players not found in {sheet} {rnd}:\n"
+                            + fmt(fail) +
+                            f"\n\nSet XI first with:\n`xi {tkey} {rnd} {','.join(fail)}`")
+                return NO_REPLY  # all good — silent
+            except Exception as e:
+                return f"❌ Error recording fees: {str(e)}"
 
-        # ── MATCH UNPAID LIST ────────────────────────────
+        # ── MATCH UNPAID — always reply (query) ──────────
         # match unpaid div2
         m = re.match(r"match unpaid\s+(\S+)", msg, re.I)
         if m:
             tkey  = m.group(1).lower()
             sheet = TEAM_SHEET.get(tkey)
             if not sheet:
-                return f"⚠️ Unknown team `{tkey}`. Use: div2 · div3 · nk1 · nk2 · u15"
+                return f"❌ Unknown team `{tkey}`. Use: div2 · div3 · nk1 · nk2 · u15"
             unpaid = get_unpaid_match_fees(sheet)
             if not unpaid:
                 return f"🎉 All match fees paid for *{sheet}*!"
             lines = [f"  • {u['player']} — {u['round']}" for u in unpaid]
             return f"❌ *Unpaid — {sheet} ({len(unpaid)}):*\n" + "\n".join(lines)
 
-        # ── ADD EXPENSE / SPONSORSHIP ────────────────────
+        # ── ADD EXPENSE — only reply on error ────────────
         # expense tournament 3000 Entry fee Karthik
         m = re.match(r"expense\s+(\w+)\s+(\d+)\s*(.*)", msg, re.I)
         if m:
             cat, amt_str, rest = m.groups()
             cat = cat.lower()
             if cat not in VALID_EXPENSE_CATS:
-                return (f"⚠️ Unknown category `{cat}`.\n"
+                return (f"❌ Unknown category `{cat}`.\n"
                         f"Use: tournament · ground · equipment · "
                         f"refreshments · jersey · sponsorship")
-            amt   = int(amt_str)
-            parts = rest.strip().split()
-            if parts and parts[-1].replace("_","").isalpha():
-                paid_by = parts[-1]
-                note    = " ".join(parts[:-1])
-            else:
-                paid_by = "Admin"
-                note    = rest.strip()
-            add_expense(cat, amt, note, paid_by)
-            label = "💰 Sponsorship income" if cat == "sponsorship" else "💸 Expense"
-            return (f"{label} recorded!\n"
-                    f"Category: *{cat.title()}* | Amount: *₹{amt:,}*\n"
-                    f"Note: {note} | By: {paid_by} | Sheet updated 📊")
+            try:
+                amt   = int(amt_str)
+                parts = rest.strip().split()
+                if parts and parts[-1].replace("_","").isalpha():
+                    paid_by = parts[-1]
+                    note    = " ".join(parts[:-1])
+                else:
+                    paid_by = "Admin"
+                    note    = rest.strip()
+                add_expense(cat, amt, note, paid_by)
+                print(f"[OK] Expense: {cat} ₹{amt} by {paid_by}")
+                return NO_REPLY  # silent — check Google Sheet
+            except Exception as e:
+                return f"❌ Error adding expense: {str(e)}"
 
-        # ── SETTLE (admin → club) ─────────────────────────
+        # ── SETTLE — only reply on error ─────────────────
         # settle Karthik 15000 [reason]
         m = re.match(r"settle\s+(\w+)\s+(\d+)\s*(.*)", msg, re.I)
         if m:
             admin, amt_str, reason = m.groups()
-            amt    = int(amt_str)
-            reason = reason.strip() or "Fee handover"
-            add_settlement(admin.title(), "Club Account", amt, reason, admin.title())
-            from reminder import notify_admins
-            notify_admins(
-                f"🔄 *Settlement Recorded!*\n"
-                f"*{admin.title()}* → Club Account\n"
-                f"Amount: ₹{amt:,} | Reason: {reason}"
-            )
-            return (f"✅ Settlement recorded!\n"
-                    f"*{admin.title()}* handed *₹{amt:,}* to Club Account 📊")
+            try:
+                amt    = int(amt_str)
+                reason = reason.strip() or "Fee handover"
+                add_settlement(admin.title(), "Club Account", amt, reason, admin.title())
+                print(f"[OK] Settlement: {admin} → Club ₹{amt}")
+                return NO_REPLY  # silent — check Google Sheet
+            except Exception as e:
+                return f"❌ Error recording settlement: {str(e)}"
 
-        # ── REIMBURSE (club → admin) ──────────────────────
+        # ── REIMBURSE — only reply on error ──────────────
         # reimburse Satheesh 600 Food refund
         m = re.match(r"reimburse\s+(\w+)\s+(\d+)\s*(.*)", msg, re.I)
         if m:
             admin, amt_str, reason = m.groups()
-            amt    = int(amt_str)
-            reason = reason.strip() or "Expense reimbursement"
-            add_settlement("Club Account", admin.title(), amt, reason, "Admin")
-            from reminder import notify_admins
-            notify_admins(
-                f"🔄 *Reimbursement Recorded!*\n"
-                f"Club Account → *{admin.title()}*\n"
-                f"Amount: ₹{amt:,} | Reason: {reason}"
-            )
-            return (f"✅ Reimbursement recorded!\n"
-                    f"Club paid *{admin.title()}* ₹{amt:,} | Sheet updated 📊")
+            try:
+                amt    = int(amt_str)
+                reason = reason.strip() or "Expense reimbursement"
+                add_settlement("Club Account", admin.title(), amt, reason, "Admin")
+                print(f"[OK] Reimbursement: Club → {admin} ₹{amt}")
+                return NO_REPLY  # silent — check Google Sheet
+            except Exception as e:
+                return f"❌ Error recording reimbursement: {str(e)}"
 
-        # ── ADMIN SUMMARY ─────────────────────────────────
+        # ── ADMIN SUMMARY — always reply (query) ─────────
         if re.search(r"admin summary|admin balance", lower):
-            players = get_all_players()
-            paid    = [p for p in players if p.get("Fee Status","").lower() == "paid"]
-            pending = [p for p in players if p.get("Fee Status","").lower() in ["pending",""]]
+            players  = get_all_players()
+            paid     = [p for p in players if p.get("Fee Status","").lower() == "paid"]
+            pending  = [p for p in players if p.get("Fee Status","").lower() in ["pending",""]]
             by_admin = {}
             for p in paid:
                 name = p.get("Paid To","Unknown").strip() or "Unknown"
@@ -252,7 +263,7 @@ def handle_message(msg: str, sender: str = "") -> str:
                     + ("\n".join(lines) if lines else "  None yet") +
                     f"\n\n✅ Paid: {len(paid)} | ❌ Pending: {len(pending)}")
 
-        # ── SUMMARY ──────────────────────────────────────
+        # ── SUMMARY — always reply (query) ───────────────
         m = re.match(r"summary\s*(.*)", msg, re.I)
         if m:
             month = m.group(1).strip() or None
