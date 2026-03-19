@@ -1,6 +1,5 @@
 # ══════════════════════════════════════════
 # CRICKET CLUB BOT — CONFIG
-# Edit these values before running the bot
 # ══════════════════════════════════════════
 
 SHEET_NAME       = "CricketClubFinance"
@@ -10,14 +9,13 @@ TWILIO_ACCOUNT_SID = "your_twilio_account_sid"
 TWILIO_AUTH_TOKEN  = "your_twilio_auth_token"
 TWILIO_WHATSAPP_NO = "whatsapp:+14155238886"
 
-# Your WhatsApp number(s) — gets admin notifications
-# Format: ["whatsapp:+819012345678"]
+# Admin WhatsApp numbers — receive all notifications
 ADMIN_NUMBERS = ["whatsapp:+819012345678"]
 
-# Admin names exactly as they appear in the Admins sheet
+# Admin names exactly as in Admins sheet
 ADMINS = ["Karthik", "SK", "Satheesh", "Club Account"]
 
-# Team key → sheet name mapping
+# Team key → sheet name
 TEAM_SHEET = {
     "div2":  "Div-2 Match fee",
     "div-2": "Div-2 Match fee",
@@ -28,8 +26,9 @@ TEAM_SHEET = {
     "u15":   "U15 Match fee",
 }
 
-# Sheet column positions (1-based) — match your Google Sheet exactly
-# Players & Club Fees sheet
+# ── Sheet column positions (1-based) ──────────────────────
+
+# Players & Club Fees — data starts row 5
 PCF_NO       = 1   # #
 PCF_NAME     = 2   # Player Name
 PCF_PHONE    = 3   # Phone Number
@@ -41,37 +40,37 @@ PCF_STATUS   = 8   # Fee Status
 PCF_PAIDDATE = 9   # Paid Date
 PCF_PAIDTO   = 10  # Paid To
 PCF_REMARKS  = 11  # Remarks
-PCF_DATA_ROW = 5   # first data row (after 4 header rows)
+PCF_DATA_ROW = 5   # first data row
 
-# Match fee sheets columns
-MF_DATE    = 1   # Date
-MF_PLAYER  = 2   # Player
-MF_ROUND   = 3   # Round
-MF_AMOUNT  = 4   # Amount (₹)
-MF_STATUS  = 5   # Status
-MF_PAIDTO  = 6   # Paid to
-MF_REMARKS = 7   # Remarks
-MF_DATA_ROW= 4   # first data row
+# Match fee sheets — data starts row 4
+MF_DATE     = 1   # Date
+MF_PLAYER   = 2   # Player
+MF_ROUND    = 3   # Round
+MF_AMOUNT   = 4   # Amount (₹)
+MF_STATUS   = 5   # Status
+MF_PAIDTO   = 6   # Paid to
+MF_REMARKS  = 7   # Remarks
+MF_DATA_ROW = 4   # first data row
 
-# Expenses sheet columns
-EX_DATE    = 1   # Date
-EX_CAT     = 2   # Category
-EX_TYPE    = 3   # Type (Income/Expense)
-EX_AMOUNT  = 4   # Amount
-EX_NOTE    = 5   # Note
-EX_PAIDBY  = 6   # Paid By/To
-EX_DATA_ROW= 4   # first data row
+# Sponsors & Expenses — data starts row 7
+EX_DATE     = 1   # Date
+EX_CAT      = 2   # Category
+EX_TYPE     = 3   # Type
+EX_AMOUNT   = 4   # Amount (₹)
+EX_NOTE     = 5   # Note
+EX_PAIDBY   = 6   # Paid By / Paid To
+EX_DATA_ROW = 7   # first data row
 
-# Settlements sheet columns
-ST_DATE    = 1   # Date
-ST_FROM    = 2   # From
-ST_TO      = 3   # To
-ST_AMOUNT  = 4   # Amount
-ST_REASON  = 5   # Reason
-ST_RECBY   = 6   # Recorded By
-ST_DATA_ROW= 5   # first data row
+# Settlements — data starts row 7
+ST_DATE     = 1   # Date
+ST_FROM     = 2   # From
+ST_TO       = 3   # To
+ST_AMOUNT   = 4   # Amount (₹)
+ST_REASON   = 5   # Reason
+ST_RECBY    = 6   # Recorded By
+ST_DATA_ROW = 7   # first data row
 
 VALID_EXPENSE_CATS = [
-    "tournament","ground","equipment",
-    "refreshments","jersey","sponsorship"
+    "tournament", "ground", "equipment",
+    "refreshments", "jersey", "sponsorship"
 ]

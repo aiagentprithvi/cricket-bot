@@ -8,13 +8,8 @@ from sheets import (
     add_expense, add_settlement, get_summary,
 )
 
-def is_admin(sender):
-    return sender in ADMIN_NUMBERS
-
 def fmt(items):
     return "\n".join(f"  • {i}" for i in items) if items else "  None"
-
-# ── Help messages ────────────────────────────────────────
 
 HELP = """🏏 *Cricket Club Finance Bot*
 
@@ -48,30 +43,11 @@ HELP = """🏏 *Cricket Club Finance Bot*
 
 Type *help* anytime."""
 
-# ── Main handler ─────────────────────────────────────────
-
 def handle_message(msg: str, sender: str = "") -> str:
     msg   = msg.strip()
     lower = msg.lower().strip()
 
     try:
-
-        # ── PLAYER REPLIES "PAID" TO REMINDER ───────────
-        if lower == "paid":
-            phone  = sender.replace("whatsapp:", "").strip()
-            player = get_player_by_phone(phone)
-            if player:
-                from reminder import notify_admins
-                if mark_club_fee_paid(player, "Self-confirmed"):
-                    notify_admins(
-                        f"✅ *Payment Confirmed!*\n"
-                        f"*{player}* confirmed club fee payment via WhatsApp.\n"
-                        f"Sheet updated automatically 📊"
-                    )
-                    return (f"✅ Thank you *{player}*!\n"
-                            f"Your club fee has been recorded. See you on the field! 🏏")
-                return "⚠️ No pending fee found for your number. Contact admin."
-            return "⚠️ Your number is not registered. Please contact your admin."
 
         # ── HELP / GREETING ─────────────────────────────
         if lower in ["help", "hi", "hello", "start", "menu"]:
@@ -85,20 +61,21 @@ def handle_message(msg: str, sender: str = "") -> str:
             no = add_player(name, phone, role, nk)
             return (f"✅ Player *{name.title()}* added as #{no}\n"
                     f"Phone: {phone} | Role: {role.title()} | Team: {nk.upper()}\n"
-                    f"Club fee ₹{15000:,} set to *Pending*")
+                    f"Club fee pending — set when they pay.")
 
         # ── PLAYERS LIST ────────────────────────────────
         if lower == "players":
             players = get_all_players()
-            active  = [p for p in players if p.get("Status","active").lower() != "inactive"]
-            lines   = [f"  {i+1}. {p['Player Name']} ({p.get('Role','')}) — {p.get('NK Team','')}"
-                       for i, p in enumerate(active)]
-            return f"👥 *Players ({len(active)}):*\n" + "\n".join(lines)
+            if not players:
+                return "No players found. Add with: `add player Name Phone Role NK1`"
+            lines = [f"  {p.get('#','')}.  {p['Player Name']} ({p.get('Role','')}) — {p.get('NK Team','')}"
+                     for p in players]
+            return f"👥 *Players ({len(players)}):*\n" + "\n".join(lines)
 
         # ── MARK CLUB FEE PAID ──────────────────────────
         # Prithvi paid 15000 Karthik
         m = re.match(r"(\w+)\s+paid\s+(\d+)\s*(\w*)", msg, re.I)
-        if m and m.group(1).lower() not in ["match","club","send"]:
+        if m and m.group(1).lower() not in ["match", "club", "send"]:
             player  = m.group(1)
             amount  = int(m.group(2))
             paid_to = m.group(3).strip() or "Admin"
@@ -114,25 +91,25 @@ def handle_message(msg: str, sender: str = "") -> str:
                 return (f"✅ Club fee *₹{amount:,}* for *{player.title()}* marked as *Paid*\n"
                         f"Collected by: *{paid_to}* | Sheet updated 📊")
             return (f"⚠️ *{player.title()}* not found or already paid.\n"
-                    f"Check name or use `clubfee unpaid` to see list.")
+                    f"Check spelling or use `clubfee unpaid` to see list.")
 
         # ── CLUB FEE UNPAID LIST ─────────────────────────
         if re.search(r"clubfee unpaid|unpaid club|club unpaid", lower):
             pending = get_pending_club_fees()
             if not pending:
                 return "🎉 All players have paid their club fees!"
-            lines = [f"  • {p['Player Name']} — ₹{p.get('Club Fee (₹)','-')}"
+            lines = [f"  • {p['Player Name']} — ₹{p.get('Club Fee (₹)','-') or 'not set'}"
                      for p in pending]
             return f"❌ *Pending Club Fees ({len(pending)}):*\n" + "\n".join(lines)
 
-        # ── SEND CLUB REMINDERS MANUALLY ────────────────
+        # ── SEND CLUB REMINDERS ──────────────────────────
         if re.search(r"send club reminder|club reminder|send reminder", lower):
             from reminder import send_club_fee_reminders
             send_club_fee_reminders()
-            return "📨 Reminders sent to all pending players now!"
+            return "📨 Reminders sent to all pending players!"
 
         # ── SET PLAYING XI ──────────────────────────────
-        # xi div2 Round1 Ravi,Kumar,Suresh,...
+        # xi div2 Round1 Ravi,Kumar,Suresh
         m = re.match(r"xi\s+(\S+)\s+(\S+)\s+(.+)", msg, re.I)
         if m:
             tkey, rnd, pl_str = m.groups()
@@ -143,11 +120,12 @@ def handle_message(msg: str, sender: str = "") -> str:
             added   = set_playing_xi(sheet, rnd, players)
             return (f"✅ *Playing XI set — {sheet} | {rnd}*\n"
                     f"Players ({len(added)}):\n" + fmt(added) +
-                    f"\n\nAll marked *Unpaid*. Send fees after match with:\n"
+                    f"\n\nAll marked *Unpaid*.\n"
+                    f"After match send:\n"
                     f"`matchfee {tkey} {rnd} Ravi=1500,Kumar=1500 AdminName`")
 
         # ── UPDATE PLAYING XI ────────────────────────────
-        # update xi div2 Round1 Ravi,Kumar,...
+        # update xi div2 Round1 Ravi,Kumar
         m = re.match(r"update xi\s+(\S+)\s+(\S+)\s+(.+)", msg, re.I)
         if m:
             tkey, rnd, pl_str = m.groups()
@@ -172,8 +150,10 @@ def handle_message(msg: str, sender: str = "") -> str:
             for part in fee_str.replace(";",",").split(","):
                 if "=" in part:
                     n, a = part.split("=", 1)
-                    try: fee_dict[n.strip().title()] = int(a.strip())
-                    except: pass
+                    try:
+                        fee_dict[n.strip().title()] = int(a.strip())
+                    except:
+                        pass
             if not fee_dict:
                 return "⚠️ Format: `matchfee div2 Round1 Ravi=1500,Kumar=1500 AdminName`"
             ok, fail = record_match_fees(sheet, rnd, fee_dict, paid_to)
@@ -193,22 +173,21 @@ def handle_message(msg: str, sender: str = "") -> str:
             unpaid = get_unpaid_match_fees(sheet)
             if not unpaid:
                 return f"🎉 All match fees paid for *{sheet}*!"
-            lines  = [f"  • {u['player']} — {u['round']}" for u in unpaid]
+            lines = [f"  • {u['player']} — {u['round']}" for u in unpaid]
             return f"❌ *Unpaid — {sheet} ({len(unpaid)}):*\n" + "\n".join(lines)
 
         # ── ADD EXPENSE / SPONSORSHIP ────────────────────
         # expense tournament 3000 Entry fee Karthik
-        # expense sponsorship 100000 Fujisakura
         m = re.match(r"expense\s+(\w+)\s+(\d+)\s*(.*)", msg, re.I)
         if m:
             cat, amt_str, rest = m.groups()
             cat = cat.lower()
             if cat not in VALID_EXPENSE_CATS:
                 return (f"⚠️ Unknown category `{cat}`.\n"
-                        f"Use: tournament · ground · equipment · refreshments · jersey · sponsorship")
+                        f"Use: tournament · ground · equipment · "
+                        f"refreshments · jersey · sponsorship")
             amt   = int(amt_str)
             parts = rest.strip().split()
-            # Last word is admin name if it looks like a name (no digits)
             if parts and parts[-1].replace("_","").isalpha():
                 paid_by = parts[-1]
                 note    = " ".join(parts[:-1])
@@ -233,12 +212,10 @@ def handle_message(msg: str, sender: str = "") -> str:
             notify_admins(
                 f"🔄 *Settlement Recorded!*\n"
                 f"*{admin.title()}* → Club Account\n"
-                f"Amount: ₹{amt:,} | Reason: {reason}\n"
-                f"Admins sheet updated ✅"
+                f"Amount: ₹{amt:,} | Reason: {reason}"
             )
             return (f"✅ Settlement recorded!\n"
-                    f"*{admin.title()}* handed *₹{amt:,}* to Club Account\n"
-                    f"Admins sheet updated 📊")
+                    f"*{admin.title()}* handed *₹{amt:,}* to Club Account 📊")
 
         # ── REIMBURSE (club → admin) ──────────────────────
         # reimburse Satheesh 600 Food refund
@@ -252,27 +229,28 @@ def handle_message(msg: str, sender: str = "") -> str:
             notify_admins(
                 f"🔄 *Reimbursement Recorded!*\n"
                 f"Club Account → *{admin.title()}*\n"
-                f"Amount: ₹{amt:,} | Reason: {reason}\n"
-                f"Admins sheet updated ✅"
+                f"Amount: ₹{amt:,} | Reason: {reason}"
             )
             return (f"✅ Reimbursement recorded!\n"
-                    f"Club Account paid *{admin.title()}* ₹{amt:,}\n"
-                    f"Reason: {reason} | Sheet updated 📊")
+                    f"Club paid *{admin.title()}* ₹{amt:,} | Sheet updated 📊")
 
         # ── ADMIN SUMMARY ─────────────────────────────────
         if re.search(r"admin summary|admin balance", lower):
             players = get_all_players()
             paid    = [p for p in players if p.get("Fee Status","").lower() == "paid"]
-            pending = [p for p in players if p.get("Fee Status","").lower() == "pending"]
-            lines   = []
-            for name in ["Karthik","SK","Satheesh","Club Account"]:
-                coll = sum(int(str(p.get("Club Fee (₹)",0) or 0))
-                           for p in paid if p.get("Paid To","").lower() == name.lower())
-                lines.append(f"  • {name}: ₹{coll:,} collected")
+            pending = [p for p in players if p.get("Fee Status","").lower() in ["pending",""]]
+            by_admin = {}
+            for p in paid:
+                name = p.get("Paid To","Unknown").strip() or "Unknown"
+                try:
+                    amt = int(str(p.get("Club Fee (₹)",0) or 0))
+                except:
+                    amt = 0
+                by_admin[name] = by_admin.get(name, 0) + amt
+            lines = [f"  • {k}: ₹{v:,}" for k,v in by_admin.items()]
             return (f"👤 *Admin Collections (Club Fees):*\n"
-                    + "\n".join(lines) +
-                    f"\n\n*Paid:* {len(paid)} | *Pending:* {len(pending)}\n"
-                    f"For full breakdown see Admins sheet in Google Sheets.")
+                    + ("\n".join(lines) if lines else "  None yet") +
+                    f"\n\n✅ Paid: {len(paid)} | ❌ Pending: {len(pending)}")
 
         # ── SUMMARY ──────────────────────────────────────
         m = re.match(r"summary\s*(.*)", msg, re.I)
@@ -298,4 +276,6 @@ def handle_message(msg: str, sender: str = "") -> str:
 
     except Exception as e:
         print(f"[ERROR] {e}")
+        import traceback
+        print(traceback.format_exc())
         return "⚠️ Something went wrong. Please try again or type *help*."

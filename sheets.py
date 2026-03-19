@@ -27,13 +27,17 @@ def get_ws(tab):
 def today():
     return datetime.now().strftime("%d/%m/%Y")
 
+# ── Players & Club Fees ──────────────────────────────────
+
 def get_all_players():
     ws = get_ws("Players & Club Fees")
     records = ws.get_all_values()
-    headers = records[3]
+    if len(records) < PCF_DATA_ROW:
+        return []
+    headers = records[PCF_DATA_ROW - 2]  # row 4 = index 3
     players = []
-    for row in records[4:]:
-        if row[0] and str(row[0]).strip().isdigit():
+    for row in records[PCF_DATA_ROW - 1:]:
+        if row and row[0] and str(row[0]).strip().isdigit():
             players.append(dict(zip(headers, row)))
     return players
 
@@ -57,15 +61,18 @@ def add_player(name, phone, role, nk_team):
     next_no = len(players) + 1
     ws.append_row([next_no, name.title(), phone, today(),
                    role.title(), nk_team.upper(),
-                   "", "Pending", "", "", ""])
+                   "", "", "", "", ""])
     return next_no
 
 def mark_club_fee_paid(player_name, paid_to="Admin", amount=None):
     ws = get_ws("Players & Club Fees")
     data = ws.get_all_values()
-    for i, row in enumerate(data[PCF_DATA_ROW-1:], start=PCF_DATA_ROW):
-        if row[PCF_NAME-1].strip().lower() == player_name.strip().lower():
-            if row[PCF_STATUS-1].strip().lower() in ["pending", ""]:
+    for i, row in enumerate(data[PCF_DATA_ROW - 1:], start=PCF_DATA_ROW):
+        if not row or len(row) < PCF_NAME:
+            continue
+        if row[PCF_NAME - 1].strip().lower() == player_name.strip().lower():
+            status = row[PCF_STATUS - 1].strip().lower() if len(row) >= PCF_STATUS else ""
+            if status in ["pending", ""]:
                 if amount:
                     ws.update_cell(i, PCF_FEE, amount)
                 ws.update_cell(i, PCF_STATUS,   "Paid")
@@ -75,9 +82,10 @@ def mark_club_fee_paid(player_name, paid_to="Admin", amount=None):
     return False
 
 def get_pending_club_fees():
-    players = get_all_players()
-    return [p for p in players
-            if str(p.get("Fee Status","")).strip().lower() == "pending"]
+    return [p for p in get_all_players()
+            if str(p.get("Fee Status","")).strip().lower() in ["pending", ""]]
+
+# ── Match Fee Sheets ─────────────────────────────────────
 
 def set_playing_xi(sheet_name, round_name, player_list):
     ws = get_ws(sheet_name)
@@ -93,9 +101,11 @@ def update_playing_xi(sheet_name, round_name, new_players):
     ws = get_ws(sheet_name)
     data = ws.get_all_values()
     rows_to_del = []
-    for i, row in enumerate(data[MF_DATA_ROW-1:], start=MF_DATA_ROW):
-        if (row[MF_ROUND-1].strip().lower() == round_name.strip().lower()
-                and row[MF_STATUS-1].strip().lower() == "unpaid"):
+    for i, row in enumerate(data[MF_DATA_ROW - 1:], start=MF_DATA_ROW):
+        if not row or len(row) < MF_STATUS:
+            continue
+        if (row[MF_ROUND - 1].strip().lower() == round_name.strip().lower()
+                and row[MF_STATUS - 1].strip().lower() == "unpaid"):
             rows_to_del.append(i)
     for idx in sorted(rows_to_del, reverse=True):
         ws.delete_rows(idx)
@@ -107,9 +117,11 @@ def record_match_fees(sheet_name, round_name, fee_dict, paid_to="Admin"):
     ok, fail = [], []
     for player, amount in fee_dict.items():
         found = False
-        for i, row in enumerate(data[MF_DATA_ROW-1:], start=MF_DATA_ROW):
-            if (row[MF_PLAYER-1].strip().lower() == player.strip().lower()
-                    and row[MF_ROUND-1].strip().lower() == round_name.strip().lower()):
+        for i, row in enumerate(data[MF_DATA_ROW - 1:], start=MF_DATA_ROW):
+            if not row or len(row) < MF_PAIDTO:
+                continue
+            if (row[MF_PLAYER - 1].strip().lower() == player.strip().lower()
+                    and row[MF_ROUND - 1].strip().lower() == round_name.strip().lower()):
                 ws.update_cell(i, MF_AMOUNT, amount)
                 ws.update_cell(i, MF_STATUS, "Paid")
                 ws.update_cell(i, MF_PAIDTO, paid_to)
@@ -124,55 +136,85 @@ def get_unpaid_match_fees(sheet_name):
     ws = get_ws(sheet_name)
     data = ws.get_all_values()
     unpaid = []
-    for row in data[MF_DATA_ROW-1:]:
-        if row[MF_STATUS-1].strip().lower() == "unpaid" and row[MF_PLAYER-1].strip():
-            unpaid.append({"player": row[MF_PLAYER-1], "round": row[MF_ROUND-1]})
+    for row in data[MF_DATA_ROW - 1:]:
+        if not row or len(row) < MF_STATUS:
+            continue
+        if row[MF_STATUS - 1].strip().lower() == "unpaid" and row[MF_PLAYER - 1].strip():
+            unpaid.append({"player": row[MF_PLAYER - 1], "round": row[MF_ROUND - 1]})
     return unpaid
+
+# ── Sponsors & Expenses ──────────────────────────────────
 
 def add_expense(category, amount, note, paid_by):
     ws = get_ws("Sponsors & Expenses")
     exp_type = "Income" if category.lower() == "sponsorship" else "Expense"
     ws.append_row([today(), category.title(), exp_type, amount, note, paid_by])
 
+# ── Settlements ──────────────────────────────────────────
+
 def add_settlement(from_name, to_name, amount, reason, recorded_by):
     ws = get_ws("Settlements")
     ws.append_row([today(), from_name, to_name, amount, reason, recorded_by])
 
+# ── Summary ──────────────────────────────────────────────
+
 def get_summary(month_str=None):
-    now = datetime.now()
-    month = month_str or now.strftime("%B %Y")
+    month = month_str or datetime.now().strftime("%B %Y")
     players = get_all_players()
-    cf_paid = sum(int(str(p.get("Club Fee (₹)", 0) or 0))
-                  for p in players if p.get("Fee Status","").lower() == "paid")
-    cf_pending = sum(int(str(p.get("Club Fee (₹)", 0) or 0))
-                     for p in players if p.get("Fee Status","").lower() == "pending")
+
+    cf_paid = cf_pending = 0
+    for p in players:
+        try:
+            amt = int(str(p.get("Club Fee (₹)", 0) or 0))
+        except:
+            amt = 0
+        status = p.get("Fee Status", "").lower()
+        if status == "paid":
+            cf_paid += amt
+        elif status in ["pending", ""]:
+            cf_pending += amt
+
     mf_paid = mf_unpaid = 0
     for sheet in TEAM_SHEET.values():
         try:
             ws = get_ws(sheet)
             data = ws.get_all_values()
-            for row in data[MF_DATA_ROW-1:]:
-                amt = int(str(row[MF_AMOUNT-1] or 0)) if row[MF_AMOUNT-1] else 0
-                if row[MF_STATUS-1].strip().lower() == "paid":
+            for row in data[MF_DATA_ROW - 1:]:
+                if not row or len(row) < MF_STATUS:
+                    continue
+                try:
+                    amt = int(str(row[MF_AMOUNT - 1] or 0))
+                except:
+                    amt = 0
+                s = row[MF_STATUS - 1].strip().lower()
+                if s == "paid":
                     mf_paid += amt
-                elif row[MF_STATUS-1].strip().lower() == "unpaid":
+                elif s == "unpaid":
                     mf_unpaid += amt
-        except Exception:
+        except:
             pass
-    ws = get_ws("Sponsors & Expenses")
-    data = ws.get_all_values()
+
     total_exp = total_inc = 0
-    for row in data[EX_DATA_ROW-1:]:
-        try:
-            amt = int(str(row[EX_AMOUNT-1] or 0))
-            if row[EX_TYPE-1].strip().lower() == "expense":
-                total_exp += amt
-            elif row[EX_TYPE-1].strip().lower() == "income":
-                total_inc += amt
-        except Exception:
-            pass
+    try:
+        ws = get_ws("Sponsors & Expenses")
+        data = ws.get_all_values()
+        for row in data[EX_DATA_ROW - 1:]:
+            if not row or len(row) < EX_TYPE:
+                continue
+            try:
+                amt = int(str(row[EX_AMOUNT - 1] or 0))
+                t = row[EX_TYPE - 1].strip().lower()
+                if t == "expense":
+                    total_exp += amt
+                elif t == "income":
+                    total_inc += amt
+            except:
+                pass
+    except:
+        pass
+
     total_in = cf_paid + mf_paid
-    balance = total_in + total_inc - total_exp
+    balance  = total_in + total_inc - total_exp
     return {
         "month": month,
         "cf_paid": cf_paid, "cf_pending": cf_pending,
