@@ -9,8 +9,17 @@ SCOPE = [
 ]
 
 def _client():
-    creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, SCOPE)
+    import os, tempfile
+    creds_json = os.environ.get("GOOGLE_CREDENTIALS")
+    if creds_json:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            f.write(creds_json)
+            tmp_path = f.name
+        creds = ServiceAccountCredentials.from_json_keyfile_name(tmp_path, SCOPE)
+    else:
+        creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, SCOPE)
     return gspread.authorize(creds)
+```
 
 def get_ws(tab):
     return _client().open(SHEET_NAME).worksheet(tab)
