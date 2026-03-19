@@ -17,46 +17,71 @@ NO_REPLY = ""
 
 HELP = """🏏 *Cricket Club Finance Bot*
 
-👤 *Players:*
+━━━━━━━━━━━━━━━━━━━━━━━
+👤 *PLAYER MANAGEMENT*
+━━━━━━━━━━━━━━━━━━━━━━━
   add player Ravi 819012345678 Bowler NK1
   players
 
-💰 *Club Fees:*
+━━━━━━━━━━━━━━━━━━━━━━━
+💰 *CLUB FEES*
+━━━━━━━━━━━━━━━━━━━━━━━
   Prithvi paid 15000 Karthik
   clubfee unpaid
   send club reminders
 
-🏏 *Match (TEAM=div2/div3/nk1/nk2/u15):*
+━━━━━━━━━━━━━━━━━━━━━━━
+🏏 *MATCH FEES*
+  TEAM = div2/div3/nk1/nk2/u15
+━━━━━━━━━━━━━━━━━━━━━━━
   xi div2 Round1 Ravi,Kumar,Suresh
   update xi div2 Round1 Ravi,Kumar
   matchfee div2 Round1 Ravi=1500,Kumar=1500 Karthik
   match unpaid div2
 
-💸 *Expenses:*
-  expense tournament 3000 Entry fee Karthik
-  expense sponsorship 100000 Fujisakura
-
-🎯 *Umpire Fees (LEAGUE=div2/div3/nk1/nk2):*
+━━━━━━━━━━━━━━━━━━━━━━━
+🎯 *UMPIRE FEES*
+  LEAGUE = div2/div3/nk1/nk2
+━━━━━━━━━━━━━━━━━━━━━━━
   umpire div2 Round1 Ravi 500 Karthik
+  umpire div2 Round1 Kumar 500 Karthik
   umpire unpaid
   umpire summary
 
-🔄 *Settlements:*
+━━━━━━━━━━━━━━━━━━━━━━━
+💸 *EXPENSES & SPONSORSHIP*
+  Categories: tournament · ground
+  equipment · refreshments
+  jersey · sponsorship
+━━━━━━━━━━━━━━━━━━━━━━━
+  expense tournament 3000 Entry fee Karthik
+  expense ground 800 Booking SK
+  expense jersey 5000 New set Satheesh
+  expense sponsorship 100000 Fujisakura
+
+━━━━━━━━━━━━━━━━━━━━━━━
+🔄 *SETTLEMENTS*
+━━━━━━━━━━━━━━━━━━━━━━━
   settle Karthik 15000
+  settle SK 4500 Match fee handover
   reimburse Satheesh 600 Food refund
 
-📊 *Reports (always reply):*
+━━━━━━━━━━━━━━━━━━━━━━━
+📊 *REPORTS*
+━━━━━━━━━━━━━━━━━━━━━━━
   summary
   summary March 2026
   admin summary
   players
   clubfee unpaid
   match unpaid div2
+  umpire unpaid
+  umpire summary
 
-ℹ️ Success actions update Google Sheet silently.
-   Only errors will get a reply message.
+ℹ️ _Success = Google Sheet updates silently_
+ℹ️ _Errors = you get a reply message_
 
-Type *help* anytime."""
+Type *help* anytime 🏏"""
 
 def handle_message(msg: str, sender: str = "") -> str:
     msg   = msg.strip()
