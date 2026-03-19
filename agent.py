@@ -6,6 +6,7 @@ from sheets import (
     set_playing_xi, update_playing_xi,
     record_match_fees, get_unpaid_match_fees,
     add_expense, add_settlement, get_summary,
+    add_umpire_fee, get_unpaid_umpire_fees, get_umpire_summary,
 )
 
 def fmt(items):
@@ -34,6 +35,11 @@ HELP = """🏏 *Cricket Club Finance Bot*
 💸 *Expenses:*
   expense tournament 3000 Entry fee Karthik
   expense sponsorship 100000 Fujisakura
+
+🎯 *Umpire Fees (LEAGUE=div2/div3/nk1/nk2):*
+  umpire div2 Round1 Ravi 500 Karthik
+  umpire unpaid
+  umpire summary
 
 🔄 *Settlements:*
   settle Karthik 15000
@@ -283,7 +289,46 @@ def handle_message(msg: str, sender: str = "") -> str:
                 f"💰 *Balance:*   ₹{s['balance']:,}"
             )
 
-        return "❓ Command not recognised. Type *help* to see all commands."
+        # ── ADD UMPIRE FEE — only reply on error ────────
+        # umpire div2 Round1 Ravi 500 Karthik
+        m = re.match(r"umpire\s+(\S+)\s+(\S+)\s+(\w+)\s+(\d+)\s*(\w*)", msg, re.I)
+        if m:
+            league, rnd, umpire, amt_str, paid_by = m.groups()
+            league  = league.upper().replace("DIV2","Div-2").replace("DIV3","Div-3")\
+                           .replace("DIV-2","Div-2").replace("DIV-3","Div-3")\
+                           .replace("NK1","Nk1").replace("NK2","Nk2")
+            paid_by = paid_by.strip() or "Admin"
+            valid   = ["Div-2","Div-3","Nk1","Nk2"]
+            if league not in valid:
+                return f"❌ Unknown league `{league}`. Use: div2 · div3 · nk1 · nk2"
+            try:
+                add_umpire_fee(league, rnd, umpire, int(amt_str), paid_by)
+                print(f"[OK] Umpire fee: {league} {rnd} {umpire} ₹{amt_str}")
+                return NO_REPLY  # silent — check Google Sheet
+            except Exception as e:
+                return f"❌ Error adding umpire fee: {str(e)}"
+
+        # ── UMPIRE UNPAID — always reply (query) ─────────
+        if re.search(r"umpire unpaid|unpaid umpire", lower):
+            unpaid = get_unpaid_umpire_fees()
+            if not unpaid:
+                return "🎉 All umpire fees have been paid!"
+            lines = [f"  • {u['umpire']} — {u['league']} {u['round']} ₹{u['fee']}"
+                     for u in unpaid]
+            return f"❌ *Unpaid Umpire Fees ({len(unpaid)}):*\n" + "\n".join(lines)
+
+        # ── UMPIRE SUMMARY — always reply (query) ────────
+        if re.search(r"umpire summary|umpire total", lower):
+            s = get_umpire_summary()
+            lines = [f"  • {k}: ₹{v:,}" for k, v in s['by_league'].items()]
+            return (
+                f"🎯 *Umpire Fees Summary*\n\n"
+                f"✅ Total Paid:    ₹{s['total_paid']:,}\n"
+                f"⏳ Total Pending: ₹{s['total_pending']:,}\n\n"
+                f"*By League:*\n" + ("\n".join(lines) if lines else "  None yet")
+            )
+
+        return "❓ Command not recognised. Type *help* to see all commands." 
 
     except Exception as e:
         print(f"[ERROR] {e}")

@@ -224,3 +224,51 @@ def get_summary(month_str=None):
         "total_in": total_in,
         "balance": balance,
     }
+
+# ── Umpire Fees ──────────────────────────────────────────
+# Sheet columns: Date|League|Round|Umpire|Fee|PaidBy|Status
+# Data starts row 7
+
+def add_umpire_fee(league, round_name, umpire_name, amount, paid_by):
+    ws = get_ws("Umpire Fees")
+    ws.append_row([today(), league.title(), round_name,
+                   umpire_name.title(), amount, paid_by, "Paid"])
+
+def get_unpaid_umpire_fees():
+    ws = get_ws("Umpire Fees")
+    data = ws.get_all_values()
+    unpaid = []
+    for row in data[6:]:  # data from row 7
+        if not row or not row[0]:
+            continue
+        if row[6].strip().lower() == "pending":
+            unpaid.append({
+                "league": row[1], "round": row[2],
+                "umpire": row[3], "fee": row[4], "paid_by": row[5]
+            })
+    return unpaid
+
+def get_umpire_summary():
+    ws = get_ws("Umpire Fees")
+    data = ws.get_all_values()
+    total_paid = total_pending = 0
+    by_league = {}
+    for row in data[6:]:
+        if not row or not row[0]:
+            continue
+        try:
+            amt = int(str(row[4] or 0))
+        except:
+            amt = 0
+        league = row[1].strip()
+        status = row[6].strip().lower()
+        if status == "paid":
+            total_paid += amt
+            by_league[league] = by_league.get(league, 0) + amt
+        else:
+            total_pending += amt
+    return {
+        "total_paid": total_paid,
+        "total_pending": total_pending,
+        "by_league": by_league
+    }
